@@ -1,0 +1,10 @@
+# These owners will be the default owners for everything in the repo.
+*       @devsecops-team
+
+# Code ownership by directory
+/app/                @backend-team @devsecops-team
+/terraform/          @infra-team @devsecops-team
+/kubernetes/         @infra-team @devsecops-team
+/monitoring/         @observability-team @devsecops-team
+/.github/            @devsecops-team
+/docs/              @devsecops-team @docs-team

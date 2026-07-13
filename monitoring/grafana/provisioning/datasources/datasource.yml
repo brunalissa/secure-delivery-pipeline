@@ -1,0 +1,22 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# datasource.yml — Grafana Data Source Provisioning
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Grafana "provisioning" auto-configures data sources from YAML files.
+# Without provisioning, you'd manually add the Prometheus data source through
+# the Grafana UI every time you create a new container.
+#
+# On startup, Grafana reads this file and creates/updates the data source.
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus           # Prometheus data source type
+    access: proxy              # Grafana server proxies requests (not browser → Prometheus directly)
+    url: http://prometheus:9090   # Address of the Prometheus container (docker-compose service name)
+    isDefault: true            # Set as the default data source for new panels
+    editable: false            # Prevent UI users from changing the provisioned source
+    jsonData:
+      timeInterval: "15s"     # Match Prometheus scrape interval
+      httpMethod: POST          # Use POST for queries (better for large PromQL)

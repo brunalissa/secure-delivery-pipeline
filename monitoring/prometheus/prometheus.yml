@@ -1,0 +1,74 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# prometheus.yml — Prometheus Scrape Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This file configures what Prometheus scrapes. It defines "scrape jobs" —
+# each job tells Prometheus where to find metrics, how often to scrape, and
+# what labels to attach.
+#
+# In Kubernetes, the Prometheus Operator can auto-discover scrape targets via
+# ServiceMonitors or PodMonitors. But for Docker Compose or standalone setups,
+# this static configuration is used.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+global:
+  scrape_interval: 15s        # How often to scrape targets by default
+  evaluation_interval: 15s    # How often to evaluate alerting rules
+  scrape_timeout: 10s         # Timeout for each scrape
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Alerting — connect Prometheus to Alertmanager for alert routing
+# ─────────────────────────────────────────────────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"  # Alertmanager service address
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rule Files — load alerting rules from a separate file
+# ─────────────────────────────────────────────────────────────────────────────
+rule_files:
+  - "alert_rules.yml"  # Alerting and recording rules
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scrape Configurations — what to scrape
+# ─────────────────────────────────────────────────────────────────────────────
+scrape_configs:
+
+  # ── Prometheus itself (self-monitoring) ────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: "prometheus"
+
+  # ── Spring Boot Application ──────────────────────────────────────────────────
+  # Scrapes /actuator/prometheus from the app container.
+  # The "app" service name comes from docker-compose.yml.
+  - job_name: "secure-delivery-pipeline"
+    metrics_path: "/actuator/prometheus"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["app:8080"]
+        labels:
+          service: "secure-delivery-pipeline"
+          environment: "dev"
+
+  # ── PostgreSQL Exporter (if enabled) ────────────────────────────────────────
+  # The postgres_exporter exposes PostgreSQL metrics (connections, queries, locks).
+  # Uncomment in docker-compose.yml to enable.
+  # - job_name: "postgres"
+  #   static_configs:
+  #     - targets: ["postgres-exporter:9187"]
+  #       labels:
+  #       service: "postgres"
+
+  # ── Node Exporter (host metrics — CPU, memory, disk, network) ────────────────
+  # In K8s, node-exporter runs as a DaemonSet on each node.
+  # In Docker Compose, uncomment the node-exporter service to enable.
+  # - job_name: "node"
+  #   static_configs:
+  #     - targets: ["node-exporter:9100"]
+  #       labels:
+  #       service: "node"

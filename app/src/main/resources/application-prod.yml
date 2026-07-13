@@ -1,0 +1,55 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# application-prod.yml — Production Profile
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Active when: -Dspring.profiles.active=prod
+#
+# All sensitive values come from environment variables (12-Factor App).
+# Database credentials, ports etc. are NEVER hardcoded in the repo.
+# The K8s Deployment / Docker Compose sets these env vars.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+spring:
+  datasource:
+    # Environment variable fallback syntax: ${ENV_VAR:default}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/devsecops_db}
+    username: ${DB_USERNAME:devsecops_user}
+    password: ${DB_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc.batch_size: 50
+
+  flyway:
+    enabled: true
+    clean-on-validation-error: false  # Never clean in production!
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+# Actuator: restrict sensitive endpoints in production
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus  # Be more restrictive
+  endpoint:
+    health:
+      show-details: when_authorized  # Only show details to authorized users
+
+logging:
+  level:
+    root: WARN
+    com.devsecops.securepipeline: INFO

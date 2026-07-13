@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 09-podmonitor.yaml — Prometheus PodMonitor (Metrics Scraping)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A PodMonitor tells the Prometheus Operator how to scrape metrics from our
+# application pods. The operator creates scrape configurations automatically.
+#
+# If you don't use the Prometheus Operator, you can configure scraping manually
+# in prometheus.yml (see /monitoring/prometheus/prometheus.yml).
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: secure-delivery-pipeline-monitor
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+    # The release label is used by Prometheus Operator to select PodMonitors
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: secure-delivery-pipeline
+
+  # Scrape each pod individually (separate time series per pod)
+  podMetricsEndpoints:
+    - port: http               # Must match the port name in the Deployment
+      path: /actuator/prometheus  # Spring Boot Actuator Prometheus endpoint
+      interval: 15s              # Scrape every 15 seconds
+      scrapeTimeout: 10s          # Timeout for each scrape
+---

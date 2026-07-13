@@ -1,0 +1,13 @@
+# Issue Template Configuration
+# See: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussion / Question
+    url: https://github.com/devsecops/secure-delivery-pipeline/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions.
+  - name: 📖 Documentation
+    url: https://github.com/devsecops/secure-delivery-pipeline/blob/main/README.md
+    about: Read the project documentation before opening an issue.
+  - name: 🔒 Private Security Disclosure
+    url: mailto:security@devsecops.com
+    about: Report security vulnerabilities privately via email.

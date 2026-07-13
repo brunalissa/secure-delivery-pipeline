@@ -1,0 +1,40 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 01-configmap.yaml — Application Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A ConfigMap stores non-sensitive configuration data as key-value pairs.
+# The values are injected into containers via:
+#   - Environment variables (envFrom)
+#   - Files mounted in a volume
+#
+# IMPORTANT: ConfigMaps are NOT encrypted. They store plaintext data.
+# For sensitive data (passwords, tokens), use Secrets instead (see 02-secret.yaml).
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: secure-delivery-pipeline-config
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+data:
+  # Application-level configuration
+  SPRING_PROFILES_ACTIVE: "prod"
+  SERVER_PORT: "8080"
+
+  # Database connection (host only — password goes in Secret)
+  DB_HOST: "postgres-database.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_NAME: "devsecops_db"
+  DB_USERNAME: "devsecops_user"
+
+  # Database URL constructed from the above
+  DB_URL: "jdbc:postgresql://postgres-database.svc.cluster.local:5432/devsecops_db"
+
+  # JVM tuning — limit heap to 75% of container memory limit
+  JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom"
+
+  # Logging level
+  LOGGING_LEVEL_ROOT: "WARN"
+  LOGGING_LEVEL_APP: "INFO"
+---

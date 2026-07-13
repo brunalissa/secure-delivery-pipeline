@@ -1,0 +1,356 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ci.yml — Main CI/CD Pipeline (Build, Test, Quality, Package, Publish, Deploy)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This is the PRIMARY pipeline, triggered on every push to main/develop and
+# on every pull request. It runs the complete DevSecOps lifecycle:
+#
+#   1. BUILD     — Compile the Java application with Maven
+#   2. TEST      — Run unit tests + integration tests (with Testcontainers)
+#   3. QUALITY   — JaCoCo coverage check + SonarQube analysis + Checkstyle + SpotBugs
+#   4. SECURITY  — OWASP Dependency Check + Trivy container scan + Gitleaks
+#   5. PACKAGE   — Build Docker image (multi-stage)
+#   6. PUBLISH   — Push image to GitHub Container Registry (ghcr.io)
+#   7. DEPLOY    — Deploy to Kubernetes (on main branch only)
+#
+# The pipeline is split into JOBS that run sequentially (via "needs" dependencies).
+# Each job must succeed before the next starts — if tests fail, nothing is published.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: "CI/CD Pipeline"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Allow manual triggering from the GitHub Actions UI
+  workflow_dispatch:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Environment Variables — shared across all jobs
+# ─────────────────────────────────────────────────────────────────────────────
+env:
+  JAVA_VERSION: '21'
+  MAVEN_VERSION: '3.9.6'
+  # Docker image name — lowercased, pushed to GitHub Container Registry
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Permissions — least-privilege for GITHUB_TOKEN
+# ─────────────────────────────────────────────────────────────────────────────
+# The GITHUB_TOKEN is automatically provided by GitHub Actions.
+# We restrict it to only what's needed:
+#   - contents: read     — needed to checkout the code
+#   - packages: write     — needed to push Docker images to GHCR
+#   - checks: write       — needed to publish check runs (test reports)
+#   - pull-requests: write — needed to comment on PRs (SonarQube results)
+permissions:
+  contents: read
+  packages: write
+  checks: write
+  pull-requests: write
+
+jobs:
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB 1: Build & Test
+  # ═════════════════════════════════════════════════════════════════════════
+  # Compiles the code, runs unit tests, generates JaCoCo coverage report.
+  # Integration tests (Testcontainers) need Docker, so they run separately.
+  build-and-test:
+    name: "🔨 Build & Test"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      # ── Step 1: Checkout source code ──────────────────────────────────────
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 = full history (needed for SonarQube blame data)
+          fetch-depth: 0
+
+      # ── Step 2: Setup Java 21 JDK ─────────────────────────────────────────
+      - name: "Setup Java ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          # Cache Maven dependencies to speed up builds (~5x faster after first run)
+          cache: maven
+
+      # ── Step 3: Compile & Run Unit Tests ──────────────────────────────────
+      - name: "Compile & Unit Tests"
+        run: mvn clean test -B
+        # -B = batch mode (no interactive prompts, clean log output)
+
+      # ── Step 4: Run Integration Tests (Testcontainers) ────────────────────
+      # Testcontainers needs Docker. GitHub Actions runners have Docker preinstalled.
+      # The Failsafe plugin runs *IT.java files in the integration-test phase.
+      - name: "Integration Tests (Testcontainers)"
+        run: mvn verify -B -DskipUnitTests
+        # "-DskipUnitTests" is a custom flag to avoid running unit tests twice.
+        # We use Maven's Failsafe plugin for integration tests.
+
+      # ── Step 5: Upload JaCoCo Coverage Report ──────────────────────────────
+      # Store the coverage report as a build artifact — downloadable from the
+      # Actions UI and consumed by SonarQube and quality gates.
+      - name: "Upload JaCoCo Report"
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail (for debugging)
+        with:
+          name: jacoco-report
+          path: app/target/site/jacoco/
+          retention-days: 30  # Keep for 30 days
+
+      # ── Step 6: Publish Test Results ──────────────────────────────────────
+      # Publishes test results as check annotations in GitHub PRs.
+      - name: "Publish Test Results"
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: app/target/surefire-reports/*.xml
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB 2: Code Quality (SonarQube, Checkstyle, SpotBugs)
+  # ═════════════════════════════════════════════════════════════════════════
+  code-quality:
+    name: "📊 Code Quality"
+    runs-on: ubuntu-latest
+    needs: build-and-test  # Run after build succeeds
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Setup Java ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      # ── SonarQube Analysis ────────────────────────────────────────────────
+      # Connects to a SonarQube server (self-hosted or SonarCloud).
+      # The SONAR_TOKEN secret must be configured in GitHub repo settings.
+      - name: "SonarQube Analysis"
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: mvn verify sonar:sonar -B
+          -Dsonar.token=$SONAR_TOKEN
+          -Dsonar.host.url=$SONAR_HOST_URL
+        # Skip if no Sonar token is configured (e.g. fork PRs)
+        continue-on-error: true
+
+      # ── Checkstyle — Code Style Verification ───────────────────────────────
+      - name: "Checkstyle"
+        run: mvn checkstyle:check -B
+        continue-on-error: true  # Educational project: warnings don't fail builds
+
+      # ── SpotBugs — Bug Pattern Detection ───────────────────────────────────
+      - name: "SpotBugs"
+        run: mvn spotbugs:check -B
+        continue-on-error: true
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB 3: Security Scanning
+  # ═════════════════════════════════════════════════════════════════════════
+  security-scan:
+    name: "🛡️ Security Scan"
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Setup Java ${{ env.JAVA_VERSION }}"
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      # ── OWASP Dependency Check ─────────────────────────────────────────────
+      # Scans all Maven dependencies against the NVD (National Vulnerability Database).
+      # FAILS the build if any dependency has a CVSS score >= 7.0 (High or Critical).
+      # The NVD database is large (~500MB); the first run downloads it.
+      # A cache (dependency-check-data) is used to avoid re-downloading on each run.
+      - name: "OWASP Dependency Check"
+        run: mvn org.owasp:dependency-check-maven:check -B
+          -DfailBuildOnCVSS=7
+          -Dformats=HTML,JSON
+        continue-on-error: false  # FAIL pipeline on critical vulnerabilities
+
+      - name: "Upload OWASP Report"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-report
+          path: app/target/dependency-check-report.html
+          retention-days: 30
+
+      # ── Trivy Filesystem Scan ──────────────────────────────────────────────
+      # Trivy scans the source code and configuration files for vulnerabilities.
+      # It also detects IaC misconfigurations (Terraform, Docker, K8s YAML).
+      - name: "Trivy Filesystem Scan"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'  # Fail if HIGH or CRITICAL vulnerabilities found
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true  # Don't report issues without fixes available
+
+      # ── Gitleaks — Secret Scanning ─────────────────────────────────────────
+      # Scans the full Git history for accidentally committed secrets:
+      # passwords, API keys, private keys, tokens, etc.
+      - name: "Gitleaks Secret Scan"
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: true
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+        continue-on-error: true  # Educational: don't fail on first-run baseline
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB 4: Build Docker Image & Push to GHCR
+  # ═════════════════════════════════════════════════════════════════════════
+  docker-publish:
+    name: "🐳 Docker Build & Push"
+    runs-on: ubuntu-latest
+    needs: [build-and-test, code-quality, security-scan]  # All quality gates must pass
+    if: github.event_name == 'push'  # Only on push (not PRs)
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      # ── Docker Buildx ──────────────────────────────────────────────────────
+      # Buildx enables multi-platform builds and advanced caching.
+      - name: "Setup Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      # ── Login to GitHub Container Registry ─────────────────────────────────
+      # Uses the GITHUB_TOKEN (no password to manage). The "packages: write"
+      # permission in the permissions block above allows this.
+      - name: "Login to GHCR"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Docker Metadata (Tags & Labels) ─────────────────────────────────────
+      # Generates semantic tags: latest, branch-name, sha, semver
+      - name: "Generate Docker Tags"
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch         # e.g., main, develop
+            type=sha,prefix=sha-         # e.g., sha-abc1234
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ── Build & Push ───────────────────────────────────────────────────────
+      # The image is built using the Dockerfile at the repo root.
+      # GitHub Actions cache is used for Docker layers — faster subsequent builds.
+      - name: "Build & Push Image"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha  # GitHub Actions cache
+          cache-to: type=gha,mode=max  # Cache all layers
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB 5: Trivy Container Scan (scans the built Docker image)
+  # ═════════════════════════════════════════════════════════════════════════
+  container-scan:
+    name: "🔍 Container Vulnerability Scan"
+    runs-on: ubuntu-latest
+    needs: docker-publish
+    if: github.event_name == 'push'
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "Login to GHCR"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Trivy Image Scan ────────────────────────────────────────────────────
+      # Scans the Docker image for OS-level vulnerabilities (Alpine packages,
+      # Java JARs, etc.) and misconfigurations.
+      - name: "Trivy Image Scan"
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:latest
+          format: 'table'
+          exit-code: '1'  # FAIL if HIGH/CRITICAL vulnerabilities found
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # JOB 6: Deploy to Kubernetes (main branch only)
+  # ═════════════════════════════════════════════════════════════════════════
+  deploy:
+    name: "🚀 Deploy to Kubernetes"
+    runs-on: ubuntu-latest
+    needs: [docker-publish, container-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production  # Requires manual approval if configured
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      # ── Configure kubectl with the cluster ────────────────────────────────
+      # KUBE_CONFIG secret contains the base64-encoded kubeconfig file.
+      # In production, use OIDC authentication instead of long-lived secrets.
+      - name: "Configure kubectl"
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          kubectl version --client
+
+      # ── Deploy to Kubernetes ──────────────────────────────────────────────
+      # Apply all K8s manifests, then restart the deployment to pull the new image.
+      - name: "Deploy to K8s"
+        run: |
+          kubectl apply -f kubernetes/ -n secure-delivery-pipeline --validate=false
+          kubectl set image deployment/secure-delivery-pipeline \
+            app=${{ env.IMAGE_NAME }}:sha-${{ github.sha }} \
+            -n secure-delivery-pipeline
+          kubectl rollout status deployment/secure-delivery-pipeline \
+            -n secure-delivery-pipeline --timeout=300s
+
+      # ── Verify Deployment ──────────────────────────────────────────────────
+      - name: "Verify Deployment"
+        run: |
+          kubectl get pods -n secure-delivery-pipeline
+          kubectl get svc -n secure-delivery-pipeline
+          kubectl get ingress -n secure-delivery-pipeline

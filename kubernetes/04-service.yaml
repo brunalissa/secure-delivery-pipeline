@@ -1,0 +1,38 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 04-service.yaml — Kubernetes Service (ClusterIP)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A Service provides a STABLE network identity for a set of Pods. Pods are
+# ephemeral (they die, get restarted with different IPs), but a Service has
+# a stable DNS name and IP that never changes.
+#
+# Types of Services:
+#   - ClusterIP  (internal only — used for inter-service communication)
+#   - NodePort   (exposes on port 30000-32767 on all nodes)
+#   - LoadBalancer (provisions a cloud load balancer — external access)
+#   - Headless   (no cluster IP — returns pod IPs directly, used by StatefulSets)
+#
+# We use ClusterIP here because the Ingress (05-ingress.yaml) handles external
+# routing. The Ingress forwards traffic to this Service.
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Service
+metadata:
+  name: secure-delivery-pipeline
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+spec:
+  type: ClusterIP  # Internal only — the Ingress provides external access
+
+  # Selector — routes traffic to Pods matching this label
+  selector:
+    app.kubernetes.io/name: secure-delivery-pipeline
+
+  # Port mapping — maps Service port to container port
+  ports:
+    - name: http
+      port: 80          # Service port (what other pods connect to)
+      targetPort: http   # Container port name (must match port name in Deployment)
+      protocol: TCP
+---

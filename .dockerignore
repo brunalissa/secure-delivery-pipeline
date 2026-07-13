@@ -1,0 +1,38 @@
+# Build artifacts
+target/
+build/
+
+# IDE files
+.idea/
+.vscode/
+.settings/
+*.iml
+.classpath
+.project
+
+# Git
+.git
+.gitignore
+.github
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Docs
+docs/
+*.md
+LICENSE
+
+# Terraform
+terraform/
+
+# Kubernetes
+kubernetes/
+
+# Monitoring
+monitoring/
+
+# CI
+.github/

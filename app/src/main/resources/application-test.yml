@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# application-test.yml — Test Profile
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Active when: @ActiveProfiles("test") on test classes
+#
+# Uses Testcontainers PostgreSQL for integration tests (real DB, not H2 mock).
+# H2 is available as a fallback for simple unit tests without Docker.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:15-alpine:///test_db
+    username: test
+    password: test
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # Create schema from entities, drop after tests
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: false  # Disabled in tests — Hibernate creates tables instead
+
+logging:
+  level:
+    root: WARN
+    com.devsecops.securepipeline: DEBUG

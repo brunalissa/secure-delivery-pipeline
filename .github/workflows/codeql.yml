@@ -1,0 +1,70 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# codeql.yml — GitHub CodeQL Static Application Security Testing (SAST)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# CodeQL is GitHub's semantic code analysis engine. It finds security
+# vulnerabilities by analyzing data flow and control flow in source code.
+#
+# Unlike pattern-based tools (grep for "password="), CodeQL understands
+# programming language semantics and can trace data from user input to
+# dangerous sinks (e.g., SQL queries), reducing false positives.
+#
+# This workflow runs:
+#   2. On a schedule (weekly) to catch newly discovered vulnerability patterns
+#   3. On push and PR for immediate feedback
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: "🔬 CodeQL SAST Analysis"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 3 * * 1'  # Every Monday at 3 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write  # Upload results to GitHub Security tab
+
+jobs:
+
+  analyze:
+    name: "Analyze (${{ matrix.language }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['java-kotlin']
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Initialize CodeQL ──────────────────────────────────────────────────
+      # Sets up the CodeQL database for the specified language.
+      - name: "Initialize CodeQL"
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Use the "security-and-quality" suite for maximum coverage.
+          # Options: security-extended, security-and-quality
+          queries: security-and-quality
+
+      # ── Autobuild ─────────────────────────────────────────────────────────
+      # Attempts to automatically build the Java project.
+      # For Java, CodeQL needs to compile the project to build its database.
+      - name: "Autobuild"
+        uses: github/codeql-action/autobuild@v3
+
+      # ── Perform Analysis ──────────────────────────────────────────────────
+      # Runs the CodeQL queries against the database and uploads results.
+      - name: "Perform CodeQL Analysis"
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

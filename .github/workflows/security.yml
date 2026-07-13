@@ -1,0 +1,114 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# security.yml — Dedicated Security Scanning Workflow
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Runs daily at 2 AM UTC and can be triggered manually. This catches new
+# vulnerabilities that are disclosed AFTER the initial commit.
+#
+# For example, a dependency might be clean today, but a new CVE is disclosed
+# tomorrow. This scheduled scan ensures we're notified.
+#
+# Scans:
+#   1. Gitleaks — Git history secret scanning
+#   2. Trivy    — Filesystem vulnerability scan + IaC misconfiguration scan
+#   3. OWASP    — Maven dependency vulnerability check (NVD database)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: "🛡️ Security Scanning"
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2:00 AM UTC
+  workflow_dispatch: {}   # Manual trigger from Actions UI
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'app/pom.xml'
+      - 'Dockerfile'
+      - 'terraform/**'
+      - 'kubernetes/**'
+
+permissions:
+  contents: read
+  security-events: write  # Needed to upload SARIF results to GitHub Security tab
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Gitleaks — Scan for secrets in Git history
+  # ─────────────────────────────────────────────────────────────────────────────
+  gitleaks:
+    name: "Gitleaks Secret Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for secret scanning
+
+      - name: "Run Gitleaks"
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+          GITLEAKS_ENABLE_COMMENTS: true
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Trivy — Filesystem & IaC scan
+  # ─────────────────────────────────────────────────────────────────────────────
+  trivy-fs:
+    name: "Trivy Filesystem Scan"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "Trivy FS Scan (Vuln + IaC)"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+
+      - name: "Upload Trivy SARIF to GitHub Security"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # OWASP Dependency Check — Maven dependency scan
+  # ─────────────────────────────────────────────────────────────────────────────
+  owasp:
+    name: "OWASP Dependency Check"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "Setup Java 21"
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: "OWASP Dependency Check"
+        run: mvn org.owasp:dependency-check-maven:check -B
+          -DfailBuildOnCVSS=7
+          -Dformats=HTML,JSON
+
+      - name: "Upload OWASP Report"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owasp-security-report
+          path: app/target/dependency-check-report.html
+          retention-days: 30

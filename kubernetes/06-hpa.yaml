@@ -1,0 +1,84 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 06-hpa.yaml — Horizontal Pod Autoscaler
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# The Horizontal Pod Autoscaler (HPA) automatically scales the number of
+# Pod replicas based on observed CPU/memory utilization or custom metrics.
+#
+# How it works:
+#   1. The HPA controller queries the Metrics Server every 15 seconds
+#   2. It compares current usage vs. the target utilization
+#   3. If current > target: scale UP (add replicas)
+#   4. If current < target: scale DOWN (remove replicas)
+#
+# Example:
+#   Target: 70% CPU utilization
+#   Current: 2 replicas, average CPU is 90%
+#   HPA scales to ceil(90/70 * 2) = 3 replicas
+#
+# REQUIREMENTS:
+#   - Metrics Server must be installed (provides CPU/memory metrics)
+#   - The Deployment must have resource requests set (it does — see 03-deployment.yaml)
+#   - For custom metrics (request rate, queue depth), install Prometheus Adapter
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: secure-delivery-pipeline
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+spec:
+  # The resource to scale
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: secure-delivery-pipeline
+
+  # Scaling boundaries
+  minReplicas: 2   # Minimum pods (for HA, keep >= 2)
+  maxReplicas: 10  # Maximum pods (cost ceiling)
+
+  # Metrics to scale on
+  metrics:
+    # ── CPU Utilization ──────────────────────────────────────────────────
+    # Scale if average CPU across all pods exceeds 70% of the requested CPU
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Target: 70% of requested CPU (250m → 175m)
+
+    # ── Memory Utilization ───────────────────────────────────────────────
+    # Scale if average memory across all pods exceeds 80% of requested memory
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Target: 80% of requested memory (256Mi → 205Mi)
+
+  # ── Scaling behavior ───────────────────────────────────────────────────
+  behavior:
+    # Scale UP faster (respond to traffic spikes quickly)
+    scaleUp:
+      stabilizationWindowSeconds: 0  # No stabilization — scale immediately
+      policies:
+        - type: Pods
+          value: 4                     # Add up to 4 pods at a time
+          periodSeconds: 60            # Every 60 seconds
+        - type: Percent
+          value: 100                   # Or 100% of current replicas
+          periodSeconds: 60
+      selectPolicy: Max               # Use the policy that allows the most scaling
+
+    # Scale DOWN slower (avoid flapping during transient load drops)
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+        - type: Pods
+          value: 1                      # Remove only 1 pod at a time
+          periodSeconds: 120            # Every 2 minutes
+      selectPolicy: Min                # Use the most conservative policy
+---

@@ -1,0 +1,66 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# application.yml — Default Spring Boot Configuration (active for all profiles)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This is the main configuration file. Environment-specific overrides go in:
+#   - application-dev.yml     (development — local database, debug logging)
+#   - application-prod.yml    (production — PostgreSQL, info logging)
+#   - application-test.yml    (tests — H2 in-memory database)
+#
+# Properties can be overridden at runtime via:
+#   1. Environment variables (UPPERCASE with underscores): SERVER_PORT=9090
+#   2. Command-line args: --server.port=9090
+#   3. External config: /config/application.yml (12-Factor App externalization)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+spring:
+  application:
+    name: secure-delivery-pipeline
+
+  # ──── JPA / Hibernate Configuration ────
+  jpa:
+    open-in-view: false
+    hibernate:
+      # "validate" checks schema matches entity annotations - production-safe
+      # DB schema should be managed by Flyway migrations, not Hibernate
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc.batch_size: 20
+
+  # ──── Flyway Database Migration ────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+# ──── Server Configuration ────
+server:
+  port: 8080
+  shutdown: graceful  # Wait for in-flight requests before shutdown
+
+# ──── Actuator (Health / Metrics) Endpoints ────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true  # Enable K8s liveness/readiness probe endpoints
+  metrics:
+    distribution:
+      percentiles:
+        "http.server.requests": 0.5, 0.95, 0.99
+    tags:
+      application: ${spring.application.name}
+
+# ──── Logging Configuration ────
+logging:
+  level:
+    root: INFO
+    com.devsecops.securepipeline: INFO
+    org.hibernate.SQL: WARN

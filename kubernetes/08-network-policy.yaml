@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 08-network-policy.yaml — Network Policy (Micro-segmentation)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A Network Policy is the Kubernetes equivalent of a firewall. It controls
+# which Pods can communicate with each other and with external endpoints.
+#
+# By default, ALL pods in a K8s cluster can reach ALL other pods. Network
+# policies restrict this to only necessary traffic — the "deny by default,
+# allow by exception" security principle.
+#
+# REQUIREMENT: A CNI plugin that supports NetworkPolicy must be installed
+# (Calico, Cilium, AWS VPC CNI, etc.). Without it, NetworkPolicies are ignored.
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: secure-delivery-pipeline-netpol
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+spec:
+  # Apply to pods matching this label
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: secure-delivery-pipeline
+
+  policyTypes:
+    - Ingress  # Controls incoming traffic
+    - Egress   # Controls outgoing traffic
+
+  # ── Ingress Rules (Who can talk TO us) ────────────────────────────────────
+  ingress:
+    # Allow traffic from the NGINX Ingress Controller namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+
+    # Allow traffic from Prometheus for metrics scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  # ── Egress Rules (Who can we talk TO) ─────────────────────────────────────
+  egress:
+    # Allow DNS resolution (kube-system CoreDNS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow HTTPS outbound (for external API calls, container registry, etc.)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32   # Block AWS metadata endpoint
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow outbound to PostgreSQL (if in a separate namespace)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---

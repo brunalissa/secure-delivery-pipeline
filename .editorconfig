@@ -1,0 +1,60 @@
+# EditorConfig (https://editorconfig.org) — enforces consistent coding styles across editors and IDEs.
+root = true                          # Tells EditorConfig to stop searching for parent config files.
+
+# ────────────────────────────────────────
+# Default rules for ALL file types
+# ────────────────────────────────────────
+[*]
+charset = utf-8                     # Always use UTF-8 encoding.
+end_of_line = lf                     # Unix-style line endings (LF) — avoid Windows CRLF issues in CI.
+insert_final_newline = true          # Ensure every file ends with a newline character.
+trim_trailing_whitespace = true     # Strip invisible trailing spaces that cause noisy diffs.
+
+# Indentation varies by language; the blocks below override these defaults.
+
+# ── Java ──────────────────────────────────
+[*.java]
+indent_style = space                 # Spaces (not tabs) for Java indentation — Maven/Spring convention.
+indent_size = 4                      # 4 spaces per indent level (Java standard).
+
+# ── Maven POM / XML ───────────────────────
+[*.xml]
+indent_style = space
+indent_size = 4
+
+# ── YAML (CI/CD, K8s, Compose, Grafana) ───
+[*.yml]
+indent_style = space
+indent_size = 2                      # 2 spaces for YAML — the de-facto standard.
+
+[*.yaml]
+indent_style = space
+indent_size = 2
+
+# ── Terraform ─────────────────────────────
+[*.tf]
+indent_style = space
+indent_size = 2                      # 2 spaces for HCL — hashicorp/terraform convention.
+
+[*.tfvars]
+indent_style = space
+indent_size = 2
+
+# ── Markdown ──────────────────────────────
+[*.md]
+trim_trailing_whitespace = false     # Preserve trailing spaces — Markdown uses them for line breaks.
+
+# ── Properties / Config ───────────────────
+[*.properties]
+indent_style = space
+indent_size = 2
+
+# ── Dockerfile ─────────────────────────────
+[Dockerfile]
+indent_style = space
+indent_size = 4
+
+# ── Shell scripts ─────────────────────────
+[*.sh]
+indent_style = space
+indent_size = 2

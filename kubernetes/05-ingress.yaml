@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 05-ingress.yaml — Ingress Resource (External HTTP Routing)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# An Ingress exposes HTTP/HTTPS routes from outside the cluster to Services
+# inside the cluster. It provides:
+#   - Virtual host-based routing (app.example.com → service A)
+#   - Path-based routing (example.com/api/v1 → service B)
+#   - TLS termination (HTTPS)
+#
+# REQUIREMENT: An Ingress Controller (NGINX, Traefik, ALB, etc.) must be installed
+# in the cluster. The annotation specifies which controller to use.
+#
+# Example flow:
+#   Internet → Ingress Controller → Service → Pod
+#           https://app.example.com
+#                                   ↓
+#                         secure-delivery-pipeline Service
+#                                   ↓
+#                                        Pod(s) on port 8080
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: secure-delivery-pipeline
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+  annotations:
+    # NGINX Ingress Controller annotations
+    # Use the kubernetes.io/ingress.class annotation for older NGINX versions
+    kubernetes.io/ingress.class: "nginx"
+
+    # Redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # Enable CORS for API access
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.example.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+
+    # Rate limiting (protect against DDoS / abuse)
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+
+    # Request body size limit (protect against large payloads)
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+
+    # cert-manager automatic TLS certificate provisioning
+    # Requires cert-manager to be installed in the cluster
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  # TLS certificate configuration
+  # cert-manager will automatically provision a Let's Encrypt certificate
+  # and store it in the specified Secret.
+  tls:
+    - hosts:
+        - secure-delivery-pipeline.example.com
+      secretName: secure-delivery-pipeline-tls
+
+  # Routing rules — map host + path to a Service
+  rules:
+    - host: secure-delivery-pipeline.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: secure-delivery-pipeline
+                port:
+                  name: http
+---

@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ==========================================================================
+  pom.xml — Maven Project Object Model for "Secure Delivery Pipeline" application
+  ==========================================================================
+  
+  This POM file is the heart of the Maven build. It defines:
+    1. The project coordinates & metadata (groupId, artifactId, version).
+    2. All dependencies (Spring Boot, JPA, PostgreSQL driver, test libs).
+    3. Build plugins (compiler, JaCoCo coverage, Checkstyle, SpotBugs, OWASP).
+    4. Quality assurance configuration (code coverage thresholds, static analysis).
+  
+  The `<parent>` block uses spring-boot-starter-parent which imports:
+    - The Spring Boot dependency BOM (Bill of Materials) so dependency versions are managed.
+    - Plugin configuration defaults (Maven Compiler, Surefire, Failsafe, etc.).
+    - default build lifecycle behavior for Spring Boot apps.
+  
+  The Java version is set to 21 — Spring Boot 3.x requires Java 17+ / 21 is LTS.
+  ==========================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         PARENT: Spring Boot Starter Parent
+         Provides dependency management & sensible plugin defaults.
+         ────────────────────────────────────────────────────────────────────── -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/> <!-- lookup from repository, not local filesystem -->
+    </parent>
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         PROJECT COORDINATES
+         ────────────────────────────────────────────────────────────────────── -->
+    <groupId>com.devsecops</groupId>
+    <artifactId>secure-delivery-pipeline</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Secure Delivery Pipeline</name>
+    <description>
+        A production-grade Java Spring Boot application demonstrating modern
+        DevSecOps practices: CI/CD, security scanning, IaC, Kubernetes, and monitoring.
+    </description>
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         PROPERTIES — centralized version management
+         Define versions here so dependencies below can omit <version>.
+         ────────────────────────────────────────────────────────────────────── -->
+    <properties>
+        <java.version>21</java.version> <!-- Java 21 LTS -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Test library versions (override Spring Boot managed versions if needed) -->
+        <testcontainers.version>1.19.8</testcontainers.version>
+
+        <!-- Plugin versions not managed by spring-boot-starter-parent -->
+        <checkstyle.version>10.17.0</checkstyle.version>
+        <spotbugs.version>4.8.6.2</spotbugs.version>
+        <jacoco.version>0.8.12</jacoco.version>
+        <owasp.version>10.0.4</owasp.version>
+
+        <!-- Coverage threshold — pipeline fails if coverage drops below 80% -->
+        <jacoco.minimum.coverage>0.80</jacoco.minimum.coverage>
+    </properties>
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         DEPENDENCIES
+         Each block below is documented for educational context.
+         ────────────────────────────────────────────────────────────────────── -->
+    <dependencies>
+
+        <!--
+          Spring Boot Web Starter
+          Imports:
+            - Embedded Tomcat (servlet container)
+            - Spring MVC (REST annotations, routing, content negotiation)
+            - Jackson (JSON serialization)
+            - Validation Starter (Bean Validation API)
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+          Spring Data JPA Starter
+          Provides:
+            - Hibernate ORM
+            - Spring Data repositories (auto-generated implementations)
+            - EntityManager, JPA repositories, query DSL
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!--
+          Spring Validation Starter (part of web starter now but explicit for clarity)
+          Provides @Valid, @NotBlank, @NotNull, @Size, @Email etc. annotations.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!--
+          Spring Actuator
+          Exposes operational endpoints:
+            - /actuator/health (health check for K8s probes)
+            - /actuator/metrics (Prometheus metrics)
+            - /actuator/info  (build info)
+          Essential for containerized / K8s deployments.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!--
+          Prometheus Metrics Registry
+          Converts Micrometer metrics → Prometheus scrape format.
+          Visit /actuator/prometheus to see the exposed metrics.
+        -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!--
+          PostgreSQL JDBC Driver
+          Production-grade database driver.
+          Runtime scope — only needed at runtime, not compile time.
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+          Flyway Database Migration
+          Version-controlled schema migrations (V1__init.sql, V2__add_column.sql, ...).
+          Runs automatically on application startup.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!--
+          H2 In-Memory Database
+          Used for default/tests profile without spinning up real PostgreSQL.
+          Test scope — not included in production JAR.
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Lombok
+          Generates boilerplate: getters, setters, constructors, builders, logging.
+          Compile-time only — code generated at build, no runtime dependency.
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ── Testing Dependencies ─────────────────────────────────── -->
+
+        <!--
+          Spring Boot Test Starter
+          Provides:
+            - Spring Test (ApplicationContext loading)
+            - @SpringBootTest, @MockMvc, @DataJpaTest annotations
+            - JUnit 5 (Jupiter)
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Mockito Core + JUnit5 integration
+          Enables @Mock, @MockBean, @InjectMocks for unit testing.
+          (Included transitively via spring-boot-starter-test, but explicit for clarity.)
+        -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Testcontainers — Inventory module
+          Provides TestcontainersBase, DatabaseBase, started containers integration, ...
+          Enables Docker-based integration tests (spin up PostgreSQL in real container).
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Testcontainers — PostgreSQL module
+          Provides PostgreSQLContainer for integration tests with real PostgreSQL.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          Testcontainers — JUnit Jupiter integration
+          Provides @Testcontainers, @Container annotations.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         BUILD CONFIGURATION — Plugins
+         ────────────────────────────────────────────────────────────────────── -->
+    <build>
+        <plugins>
+
+            <!--
+              Spring Boot Maven Plugin
+              Packages the app as an executable JAR with embedded Tomcat.
+              Also provides the `build-info` goal — generates build-versions.properties.
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build-info</goal> <!-- Generates META-INF/build-info.properties for /actuator/info -->
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Maven Compiler Plugin
+              Configures the Java 21 compiler.
+              Enables preview features if needed.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <parameters>true</parameters> <!-- Include parameter names in bytecode -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!--
+              Maven Surefire Plugin — runs UNIT tests (src/test/java/**/*Test.java)
+              Configured by spring-boot-starter-parent, but we override to add JaCoCo agent.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+
+            <!--
+              Maven Failsafe Plugin — runs INTEGRATION tests (src/test/java/**/*IT.java)
+              Runs in the integration-test phase (after unit tests).
+              Separating unit vs integration tests speeds up the feedback loop.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+
+            <!--
+              ═══════════════════════════════════════════════════════
+              JaCoCo — Java Code Coverage Library
+              Measures how many lines / branches your tests exercise.
+              Generates HTML + XML reports in target/site/jacoco/.
+              The XML report is consumed by SonarQube and CI quality gates.
+              ═══════════════════════════════════════════════════════
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <configuration>
+                    <!-- Excluded packages:
+                         Application main class — not testable.
+                         Config and exception classes — often trivial or framework-driven.
+                         reducing coverage noise on infrastructure code. -->
+                    <excludes>
+                        <exclude>com/devsecops/securepipeline/SecureDeliveryPipelineApplication.*</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <!-- 1. Prepare the JaCoCo runtime agent BEFORE tests run -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+
+                    <!-- 2. Generate reports after tests complete -->
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+
+                    <!-- 3. Enforce minimum coverage (80%) — fails build if below -->
+                    <execution>
+                        <id>check-coverage</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element> <!-- Check the entire bundle (project) -->
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter> <!-- Measure lines covered -->
+                                            <value>COVEREDRATIO</value> <!-- Ratio of covered / total -->
+                                            <minimum>${jacoco.minimum.coverage}</minimum> <!-- 0.80 = 80% -->
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              ═══════════════════════════════════════════════════════
+              Checkstyle — Static Code Style Analysis
+              Validates adherence to Google Java Style Guide (with modifications).
+              Runs in the `verify` phase (late in build lifecycle).
+              View reports at: target/site/checkstyle.html
+              ═══════════════════════════════════════════════════════
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.3.1</version>
+                <dependencies>
+                    <!-- Use a specific Checkstyle version -->
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>${checkstyle.version}</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <configLocation>google_checks.xml</configLocation>
+                    <failOnViolation>true</failOnViolation> <!-- Fail build on violations -->
+                    <logViolationsToConsole>true</logViolationsToConsole>
+                    <!-- Allow some leniency for Spring Boot conventions -->
+                    <violationSeverity>warning</violationSeverity>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>checkstyle-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              ═══════════════════════════════════════════════════════
+              SpotBugs — Static Bug Pattern Detection
+              Detects common Java bug patterns: null pointer derefs, SQL injection, etc.
+              View reports at: target/spotbugsXml.xml
+              ═══════════════════════════════════════════════════════
+            -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs</artifactId>
+                        <version>4.8.6</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <effort>Max</effort> <!-- Maximum analysis effort -->
+                    <threshold>Low</threshold> <!-- Report all issues; fail on Low+ severity -->
+                    <xmlOutput>true</xmlOutput>
+                    <failOnError>true</failOnError>
+                    <plugins>
+                        <plugin>
+                            <groupId>com.h3xstream.findsecbugs</groupId>
+                            <artifactId>findsecbugs-plugin</artifactId>
+                            <version>1.13.0</version>
+                        </plugin>
+                    </plugins>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotbugs-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              ═══════════════════════════════════════════════════════
+              OWASP Dependency Check
+              Scans project dependencies (transitive included) against the NVD
+              (National Vulnerability Database) for known CVEs.
+              Generates an HTML report: target/dependency-check-report.html
+              
+              The CI pipeline calls `dependency-check:check` which FAILS the build
+              if vulnerabilities with CVSS >= 7.0 are found (configurable).
+              ═══════════════════════════════════════════════════════
+            -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>${owasp.version}</version>
+                <configuration>
+                    <failBuildOnCVSS>7</failBuildOnCVSS> <!-- Fail on High+ severity (CVSS >= 7) -->
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </format>
+                    <!-- Suppress false positives in a versioned suppression file -->
+                    <!-- <suppressionFile>dependency-suppressions.xml</suppressionFile> -->
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>owasp-dependency-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

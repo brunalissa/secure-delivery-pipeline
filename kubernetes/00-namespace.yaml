@@ -1,0 +1,25 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 00-namespace.yaml — Kubernetes Namespace
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A namespace provides logical isolation of resources within a Kubernetes
+# cluster. Using namespaces allows:
+#   - Resource quotas (limit CPU/memory per namespace)
+#   - Network policies (control traffic between namespaces)
+#   - RBAC (different access levels per namespace)
+#   - Clean resource organization
+#
+# In production, you might have:
+#   - dev / staging / prod namespaces
+#   - Or one namespace per application
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+    app.kubernetes.io/managed-by: terraform
+    # The istio-injection label enables Istio sidecar injection if Istio is installed
+    # istio-injection: enabled
+---

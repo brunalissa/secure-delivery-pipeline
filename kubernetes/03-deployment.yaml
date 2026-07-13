@@ -1,0 +1,155 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# 03-deployment.yaml — Application Deployment
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A Deployment manages a set of identical Pods (replicas). It provides:
+#   - Rolling updates (zero-downtime deployments)
+#   - Rollbacks
+#   - Self-healing (if a Pod crashes, K8s restarts it)
+#   - Scaling (change replica count)
+#
+# This manifest demonstrates production best practices:
+#   - Resource requests and limits (prevents noisy-neighbor problems)
+#   - Readiness and liveness probes (health checking)
+#   - Security context (non-root user, read-only filesystem)
+#   - Graceful shutdown
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-delivery-pipeline
+  namespace: secure-delivery-pipeline
+  labels:
+    app.kubernetes.io/name: secure-delivery-pipeline
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  # Number of pod replicas — for HA, use >= 2
+  replicas: 2
+
+  # Rolling update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # Max extra pods during update (1 new + 2 existing = 3)
+      maxUnavailable: 0     # No pods unavailable during update (zero downtime)
+
+  # Selector — how the Deployment finds its Pods
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: secure-delivery-pipeline
+
+  # Pod template — defines what each Pod looks like
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: secure-delivery-pipeline
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      # ── Security Context — Pod Level ──────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true        # Pod must run as non-root user
+        runAsUser: 1000           # UID 1000 (standard non-root user)
+        fsGroup: 1000             # Group that owns mounted volumes
+        seccompProfile:
+          type: RuntimeDefault     # Use container runtime's default seccomp profile
+
+      # ── Container Definition ──────────────────────────────────────────────
+      containers:
+        - name: app
+          # Image from GHCR — tagged with specific version (NOT :latest in prod)
+          # The CI/CD pipeline replaces "sha-placeholder" with the actual commit SHA
+          image: ghcr.io/devsecops/secure-delivery-pipeline:sha-placeholder
+          imagePullPolicy: IfNotPresent  # Pull only if not already on the node
+
+          # Port the container listens on
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # ── Environment Variables from ConfigMap and Secret ───────────────
+          # ConfigMap values are loaded as env vars (non-sensitive config)
+          envFrom:
+            - configMapRef:
+                name: secure-delivery-pipeline-config
+
+          # Secret values are loaded as env vars (sensitive config)
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secure-delivery-pipeline-secrets
+                  key: DB_PASSWORD
+
+          # ── Resource Requests and Limits ────────────────────────────────────
+          # Requests: what the scheduler GUARANTEES (minimum resources)
+          # Limits: the maximum a container can use (killed if exceeded)
+          #
+          # The scheduler needs requests to place pods on nodes with enough
+          # capacity. Limits enforce hard caps to prevent noisy-neighbor issues.
+          resources:
+            requests:
+              cpu: "250m"         # 0.25 CPU core guaranteed
+              memory: "256Mi"      # 256 MB RAM guaranteed
+            limits:
+              cpu: "500m"         # Max 0.5 CPU core
+              memory: "512Mi"      # Max 512 MB RAM (killed / OOMKilled if exceeded)
+
+          # ── Readiness Probe ──────────────────────────────────────────────────
+          # Readiness means "the app is ready to receive traffic."
+          # K8s will NOT send traffic to this Pod until the readiness probe passes.
+          # Use readiness for "app startup" checks — slow-starting Spring Boot apps.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness  # Spring Actuator readiness endpoint
+              port: http
+            initialDelaySeconds: 30    # Wait 30s before first check (app needs time to boot)
+            periodSeconds: 10          # Check every 10s
+            failureThreshold: 3       # After 3 consecutive failures, mark not ready
+            timeoutSeconds: 5         # Fail if no response in 5s
+
+          # ── Liveness Probe ───────────────────────────────────────────────────
+          # Liveness means "the app is alive."
+          # If liveness fails, K8s RESTARTS the Pod.
+          # Use liveness for detecting deadlocks, memory leaks, hangs.
+          #
+          # NOTE: Liveness should be LESS aggressive than readiness
+          # (longer delays, more retries) to avoid unnecessary restarts.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness  # Spring Actuator liveness endpoint
+              port: http
+            initialDelaySeconds: 60    # Wait 60s before first check (longer than readiness)
+            periodSeconds: 20           # Check every 20s
+            failureThreshold: 3        # 3 consecutive failures → restart
+            timeoutSeconds: 5
+
+          # ── Container Security Context ────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false  # No sudo / privilege escalation
+            readOnlyRootFilesystem: true    # Read-only FS (prevents tampering)
+            capabilities:
+              drop:
+                - ALL                       # Drop ALL Linux capabilities
+
+          # ── Graceful Shutdown ─────────────────────────────────────────────
+          # When K8s terminates the Pod, it sends SIGTERM to the container.
+          # Spring Boot handles SIGTERM via server.shutdown=graceful.
+          # K8s waits this long before sending SIGKILL (force kill).
+          lifecycle:
+            preStop:
+              exec:
+                # Give the Pod time to be removed from Service endpoints
+                # (K8s endpoints controller is eventually consistent)
+                command: ["sh", "-c", "sleep 10"]
+
+      # ── Graceful Termination Period ────────────────────────────────────────
+      # K8s waits up to this duration for the Pod to terminate gracefully.
+      # Spring Boot's graceful shutdown waits for in-flight requests to complete.
+      terminationGracePeriodSeconds: 30
+
+      # ── Image Pull Secrets (if using private registry) ──────────────────────
+      # For GHCR with private repos, configure a Secret with registry credentials.
+      # imagePullSecrets:
+      #   - name: ghcr-pull-secret
+---

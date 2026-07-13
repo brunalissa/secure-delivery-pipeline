@@ -1,0 +1,33 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# application-dev.yml — Development Profile
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Active when: -Dspring.profiles.active=dev
+#
+# Development assumes PostgreSQL running locally via docker-compose.
+# Logs are verbose for debugging. JPA SQL is shown.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/devsecops_db
+    username: devsecops_user
+    password: devsecops_password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.devsecops.securepipeline: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE

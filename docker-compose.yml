@@ -1,0 +1,135 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# docker-compose.yml — Local Development Environment
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# This file defines a multi-container environment for local development and testing.
+# It starts PostgreSQL + the Spring Boot application + Prometheus + Grafana,
+# all wired together with a shared network.
+#
+# Usage:
+#   docker compose up -d            # Start all services in background
+#   docker compose logs -f app      # Follow app logs
+#   docker compose down             # Stop and remove containers
+#   docker compose down -v          # Also remove volumes (destructive!)
+#
+# The "docker-compose.override.yml" (or -f flag) can customize for dev vs prod.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Using PostgreSQL 15-alpine for a lightweight image (~80MB).
+  # Data persists in a named volume "postgres_data" across container restarts.
+  db:
+    image: postgres:15-alpine
+    container_name: sdp-postgres
+    environment:
+      POSTGRES_DB: devsecops_db
+      POSTGRES_USER: devsecops_user
+      POSTGRES_PASSWORD: devsecops_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready checks if PostgreSQL is ready to accept connections.
+      # The app's "depends_on: condition: service_healthy" ensures the app
+      # doesn't start until PostgreSQL is fully ready (not just started).
+      test: ["CMD-SHELL", "pg_isready -U devsecops_user -d devsecops_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sdp-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Spring Boot Application
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Built from the local Dockerfile. Connects to the db service.
+  # The "depends_on" with "condition: service_healthy" ensures ordered startup.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sdp-app
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - DB_URL=jdbc:postgresql://db:5432/devsecops_db
+      - DB_USERNAME=devsecops_user
+      - DB_PASSWORD=devsecops_password
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    networks:
+      - sdp-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Prometheus — Metrics Scraping
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Prometheus scrapes /actuator/prometheus from the app every 15 seconds.
+  # Configuration is in monitoring/prometheus/prometheus.yml.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sdp-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - sdp-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Grafana — Metrics Visualization
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Pre-provisioned with datasource (Prometheus) and dashboards.
+  # Default login: admin / admin (change in production!).
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sdp-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - sdp-network
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Named Volumes — Persistent Data
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:    # PostgreSQL data files — persists across restarts
+  prometheus_data:  # Prometheus time-series data
+  grafana_data:     # Grafana dashboards & user data
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Network — Shared Communication
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  sdp-network:
+    driver: bridge  # Default bridge driver — containers can resolve by service name
