@@ -22,7 +22,7 @@
 # Uses the Eclipse Temurin image (OpenJDK distro) with Maven pre-installed.
 # We chose the eclipse-temurin image because it's maintained by the Adoptium
 # community and is the de-facto standard for Java container builds.
-FROM eclipse-temurin:21-jdk-jammy AS builder
+FROM maven:3.9.11-eclipse-temurin-21 AS builder
 
 # Set the working directory inside the builder container
 WORKDIR /build
