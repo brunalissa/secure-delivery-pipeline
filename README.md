@@ -29,10 +29,6 @@
 
 ---
 
-## 🔭 Project Overview
-
-This project is a **portfolio-ready demonstration** of skills expected from a DevOps Engineer, Cloud Engineer, Platform Engineer, or DevSecOps Engineer. It showcases a complete software delivery lifecycle — from source code to production — with security baked in at every stage.
-
 ### What This Project Demonstrates
 
 | Area | What's Covered |
