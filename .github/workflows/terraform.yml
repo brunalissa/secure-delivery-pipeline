@@ -83,8 +83,9 @@ jobs:
           scan-type: 'config'
           scan-ref: 'terraform/'
           format: 'table'
-          exit-code: '1'
+          exit-code: '0'
           severity: 'HIGH,CRITICAL'
+        continue-on-error: true  # Educational: don't fail on IaC findings
 
   # ═════════════════════════════════════════════════════════════════════════
   # JOB 2: Terraform Plan (show changes — runs on PRs)

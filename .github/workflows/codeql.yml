@@ -56,11 +56,20 @@ jobs:
           # Options: security-extended, security-and-quality
           queries: security-and-quality
 
-      # ── Autobuild ─────────────────────────────────────────────────────────
-      # Attempts to automatically build the Java project.
-      # For Java, CodeQL needs to compile the project to build its database.
-      - name: "Autobuild"
-        uses: github/codeql-action/autobuild@v3
+      # ── Build Java Project (replaces autobuild) ────────────────────────────
+      # CodeQL needs the project compiled to build its database.
+      # Since pom.xml is in app/ subdirectory, autobuild fails.
+      # We build manually with Maven instead.
+      - name: "Setup Java 21"
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: "Build with Maven"
+        working-directory: app
+        run: mvn clean compile -B -DskipTests
 
       # ── Perform Analysis ──────────────────────────────────────────────────
       # Runs the CodeQL queries against the database and uploads results.

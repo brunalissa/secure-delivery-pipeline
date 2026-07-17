@@ -3,18 +3,18 @@
   ==========================================================================
   pom.xml — Maven Project Object Model for "Secure Delivery Pipeline" application
   ==========================================================================
-  
+
   This POM file is the heart of the Maven build. It defines:
     1. The project coordinates & metadata (groupId, artifactId, version).
     2. All dependencies (Spring Boot, JPA, PostgreSQL driver, test libs).
     3. Build plugins (compiler, JaCoCo coverage, Checkstyle, SpotBugs, OWASP).
     4. Quality assurance configuration (code coverage thresholds, static analysis).
-  
+
   The `<parent>` block uses spring-boot-starter-parent which imports:
     - The Spring Boot dependency BOM (Bill of Materials) so dependency versions are managed.
     - Plugin configuration defaults (Maven Compiler, Surefire, Failsafe, etc.).
     - default build lifecycle behavior for Spring Boot apps.
-  
+
   The Java version is set to 21 — Spring Boot 3.x requires Java 17+ / 21 is LTS.
   ==========================================================================
 -->
@@ -125,6 +125,17 @@
         </dependency>
 
         <!--
+          Spring Security Starter
+          Provides authentication & authorization infrastructure.
+          The SecurityConfig.java uses SecurityFilterChain for configuration.
+          Without this dependency, the SecurityConfig class won't compile.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!--
           Prometheus Metrics Registry
           Converts Micrometer metrics → Prometheus scrape format.
           Visit /actuator/prometheus to see the exposed metrics.
@@ -178,6 +189,17 @@
         </dependency>
 
         <!-- ── Testing Dependencies ─────────────────────────────────── -->
+
+        <!--
+          Spring Security Test
+          Provides @WithMockUser for testing secured endpoints.
+          Used by TaskControllerTest to mock authenticated user.
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!--
           Spring Boot Test Starter
@@ -460,7 +482,7 @@
               Scans project dependencies (transitive included) against the NVD
               (National Vulnerability Database) for known CVEs.
               Generates an HTML report: target/dependency-check-report.html
-              
+
               The CI pipeline calls `dependency-check:check` which FAILS the build
               if vulnerabilities with CVSS >= 7.0 are found (configurable).
               ═══════════════════════════════════════════════════════
@@ -474,7 +496,7 @@
                     <formats>
                         <format>HTML</format>
                         <format>JSON</format>
-                    </format>
+                    </formats>
                     <!-- Suppress false positives in a versioned suppression file -->
                     <!-- <suppressionFile>dependency-suppressions.xml</suppressionFile> -->
                 </configuration>

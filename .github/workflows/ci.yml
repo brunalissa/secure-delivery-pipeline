@@ -91,7 +91,7 @@ jobs:
       # Testcontainers needs Docker. GitHub Actions runners have Docker preinstalled.
       # The Failsafe plugin runs *IT.java files in the integration-test phase.
       - name: "Integration Tests (Testcontainers)"
-        run: mvn verify -B -DskipUnitTests
+        run: mvn verify -B -Dsurefire.skip=true
         # "-DskipUnitTests" is a custom flag to avoid running unit tests twice.
         # We use Maven's Failsafe plugin for integration tests.
 

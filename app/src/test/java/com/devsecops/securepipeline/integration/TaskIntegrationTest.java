@@ -1,6 +1,7 @@
 package com.devsecops.securepipeline.integration;
 
 import com.devsecops.securepipeline.dto.TaskCreateDTO;
+import com.devsecops.securepipeline.dto.TaskUpdateDTO;
 import com.devsecops.securepipeline.model.TaskPriority;
 import com.devsecops.securepipeline.model.TaskStatus;
 import com.devsecops.securepipeline.repository.TaskRepository;
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -56,6 +58,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Testcontainers
+@WithMockUser
 class TaskIntegrationTest {
 
     // ═════════════════════════════════════════════════════════════════════════
