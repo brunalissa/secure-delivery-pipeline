@@ -796,4 +796,3 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ---
 
-> Built as a portfolio project demonstrating DevSecOps, Platform Engineering, and Cloud Engineering skills.
