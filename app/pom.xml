@@ -65,7 +65,7 @@
         <checkstyle.version>10.17.0</checkstyle.version>
         <spotbugs.version>4.8.6.2</spotbugs.version>
         <jacoco.version>0.8.12</jacoco.version>
-        <owasp.version>10.0.4</owasp.version>
+        <owasp.version>12.2.2</owasp.version>
 
         <!-- Coverage threshold — pipeline fails if coverage drops below 80% -->
         <jacoco.minimum.coverage>0.80</jacoco.minimum.coverage>
@@ -76,6 +76,11 @@
          Each block below is documented for educational context.
          ────────────────────────────────────────────────────────────────────── -->
     <dependencies>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.3.0</version>
+        </dependency>
 
         <!--
           Spring Boot Web Starter
@@ -323,6 +328,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution>
+                </executions>
             </plugin>
 
             <!--
@@ -367,7 +375,7 @@
                     <!-- 3. Enforce minimum coverage (80%) — fails build if below -->
                     <execution>
                         <id>check-coverage</id>
-                        <phase>test</phase>
+                        <phase>verify</phase>
                         <goals>
                             <goal>check</goal>
                         </goals>
@@ -447,6 +455,7 @@
                     </dependency>
                 </dependencies>
                 <configuration>
+                    <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
                     <effort>Max</effort> <!-- Maximum analysis effort -->
                     <threshold>Low</threshold> <!-- Report all issues; fail on Low+ severity -->
                     <xmlOutput>true</xmlOutput>
@@ -486,6 +495,7 @@
                 <artifactId>dependency-check-maven</artifactId>
                 <version>${owasp.version}</version>
                 <configuration>
+                    <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
                     <failBuildOnCVSS>7</failBuildOnCVSS> <!-- Fail on High+ severity (CVSS >= 7) -->
                     <formats>
                         <format>HTML</format>

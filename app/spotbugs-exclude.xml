@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!-- Endpoint discovery is informational, not a vulnerability. -->
+  <Match><Class name="com.devsecops.securepipeline.controller.TaskController"/><Bug pattern="SPRING_ENDPOINT"/></Match>
+  <!-- Spring singleton collaborators must be shared, not defensively copied. -->
+  <Match><Class name="com.devsecops.securepipeline.controller.TaskController"/><Method name="&lt;init&gt;"/><Bug pattern="EI_EXPOSE_REP2"/></Match>
+  <Match><Class name="com.devsecops.securepipeline.metrics.CustomMetrics"/><Method name="&lt;init&gt;"/><Bug pattern="EI_EXPOSE_REP2"/></Match>
+  <!-- Demo API has no cookie/session or browser-implicit authentication.
+       Revisit before introducing authenticated browser sessions. -->
+  <Match><Class name="com.devsecops.securepipeline.config.SecurityConfig"/><Method name="~lambda\$securityFilterChain.*"/><Bug pattern="SPRING_CSRF_PROTECTION_DISABLED"/></Match>
+</FindBugsFilter>
