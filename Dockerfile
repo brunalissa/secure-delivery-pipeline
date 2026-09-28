@@ -19,10 +19,8 @@
 # ════════════════════════════════════════════════════════════════
 # STAGE 1: Builder — Compile the Java application
 # ════════════════════════════════════════════════════════════════
-# Uses the Eclipse Temurin image (OpenJDK distro) with Maven pre-installed.
-# We chose the eclipse-temurin image because it's maintained by the Adoptium
-# community and is the de-facto standard for Java container builds.
-FROM eclipse-temurin:21-jdk-jammy AS builder
+# The official Maven builder includes Maven and the Temurin Java 21 JDK.
+FROM maven:3.9.9-eclipse-temurin-21 AS builder
 
 # Set the working directory inside the builder container
 WORKDIR /build
@@ -116,6 +114,5 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom
 # might be overridden (e.g., ubuntu with a default bash shell).
 #
 # The shell form with $JAVA_OPTS is used because exec form doesn't expand
-# environment variables. This is a known trade-off — PID 1 will be /bin/sh,
-# but Spring Boot handles SIGTERM correctly for graceful shutdown.
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
+# environment variables. exec replaces the shell so Java receives SIGTERM as PID 1.
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

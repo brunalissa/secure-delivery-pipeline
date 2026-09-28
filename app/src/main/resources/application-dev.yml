@@ -10,9 +10,9 @@
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/devsecops_db
-    username: devsecops_user
-    password: devsecops_password
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/devsecops_db}
+    username: ${DB_USERNAME:devsecops_user}
+    password: ${DB_PASSWORD:devsecops_password}
     driver-class-name: org.postgresql.Driver
 
   jpa:

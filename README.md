@@ -141,7 +141,7 @@ sequenceDiagram
     P->>P: Service layer → business logic
     P->>DB: JpaRepository.save()
     DB-->>P: Insert & return ID
-    P-->>S: TaskResponseDTO (JSON)
+    P-->>S: TaskResponseDto (JSON)
     S-->>I: HTTP 201 Created
     I-->>C: JSON Response
 ```
@@ -214,9 +214,9 @@ secure-delivery-pipeline/
 │   │   │   │   ├── TaskController.java           # CRUD endpoints
 │   │   │   │   └── GlobalExceptionHandler.java   # Centralized error handling
 │   │   │   ├── dto/                  # Data Transfer Objects
-│   │   │   │   ├── TaskCreateDTO.java     # Input for create
-│   │   │   │   ├── TaskUpdateDTO.java     # Input for update
-│   │   │   │   ├── TaskResponseDTO.java   # Output
+│   │   │   │   ├── TaskCreateDto.java     # Input for create
+│   │   │   │   ├── TaskUpdateDto.java     # Input for update
+│   │   │   │   ├── TaskResponseDto.java   # Output
 │   │   │   │   └── ApiErrorResponse.java  # Error response
 │   │   │   ├── exception/             # Custom exceptions
 │   │   │   │   └── ResourceNotFoundException.java
@@ -255,7 +255,7 @@ secure-delivery-pipeline/
 ├── kubernetes/                        # K8s manifests (numbered for apply order)
 │   ├── 00-namespace.yaml             # Namespace
 │   ├── 01-configmap.yaml             # Non-sensitive config
-│   ├── 02-secret.yaml                # Sensitive config (base64)
+│   ├── 02-secret.yaml                # Secret setup instructions
 │   ├── 03-deployment.yaml            # App deployment (probes, resources, security context)
 │   ├── 04-service.yaml               # ClusterIP service
 │   ├── 05-ingress.yaml               # NGINX ingress with TLS
@@ -481,7 +481,7 @@ kubectl port-forward svc/secure-delivery-pipeline 8080:80 \
 |---|---|---|
 | `00-namespace.yaml` | Namespace | Logical isolation |
 | `01-configmap.yaml` | ConfigMap | Non-sensitive config (env vars) |
-| `02-secret.yaml` | Secret | Sensitive config (DB password) |
+| `02-secret.yaml` | Instructions | Create DB_PASSWORD separately; CI reads the repository secret |
 | `03-deployment.yaml` | Deployment | 2 replicas, probes, resource limits, security context |
 | `04-service.yaml` | Service (ClusterIP) | Stable network identity |
 | `05-ingress.yaml` | Ingress | External HTTP routing, TLS, rate limiting |
@@ -796,3 +796,9 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ---
 
+
+### Database secret for Kubernetes
+
+Configure the GitHub Actions `DB_PASSWORD` secret before deployment. The deployment job creates the Kubernetes Secret before applying manifests. For a manual deployment, follow `kubernetes/02-secret.yaml`; Kubernetes does not interpolate shell variables in YAML.
+
+The OWASP security job remains required and uses Dependency-Check 12.2.2. Configure `NVD_API_KEY` in GitHub Actions secrets to avoid slow anonymous database updates. Without successful vulnerability-feed access, security validation remains incomplete and publication is blocked.

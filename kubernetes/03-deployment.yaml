@@ -132,6 +132,10 @@ spec:
               drop:
                 - ALL                       # Drop ALL Linux capabilities
 
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
           # ── Graceful Shutdown ─────────────────────────────────────────────
           # When K8s terminates the Pod, it sends SIGTERM to the container.
           # Spring Boot handles SIGTERM via server.shutdown=graceful.
@@ -147,6 +151,9 @@ spec:
       # K8s waits up to this duration for the Pod to terminate gracefully.
       # Spring Boot's graceful shutdown waits for in-flight requests to complete.
       terminationGracePeriodSeconds: 30
+      volumes:
+        - name: tmp
+          emptyDir: {}
 
       # ── Image Pull Secrets (if using private registry) ──────────────────────
       # For GHCR with private repos, configure a Secret with registry credentials.

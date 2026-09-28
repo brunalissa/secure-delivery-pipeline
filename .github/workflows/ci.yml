@@ -21,7 +21,7 @@ name: "CI/CD Pipeline"
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'codex/**']
   pull_request:
     branches: [main, develop]
   # Allow manual triggering from the GitHub Actions UI
@@ -91,9 +91,22 @@ jobs:
       # Testcontainers needs Docker. GitHub Actions runners have Docker preinstalled.
       # The Failsafe plugin runs *IT.java files in the integration-test phase.
       - name: "Integration Tests (Testcontainers)"
-        run: mvn verify -B -Dsurefire.skip=true
-        # "-DskipUnitTests" is a custom flag to avoid running unit tests twice.
-        # We use Maven's Failsafe plugin for integration tests.
+        run: mvn verify -B -Ddependency-check.skip=true
+        # Failsafe runs integration tests. OWASP remains mandatory in security-scan.
+
+      - name: "Validate Docker Compose startup"
+        working-directory: .
+        run: |
+          docker compose up -d --build --wait --wait-timeout 180 db app
+          curl --fail http://localhost:8080/actuator/health
+      - name: "Compose failure logs"
+        if: failure()
+        working-directory: .
+        run: docker compose logs --no-color db app
+      - name: "Clean up Compose"
+        if: always()
+        working-directory: .
+        run: docker compose down -v
 
       # ── Step 5: Upload JaCoCo Coverage Report ──────────────────────────────
       # Store the coverage report as a build artifact — downloadable from the
@@ -112,7 +125,9 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          files: app/target/surefire-reports/*.xml
+          files: |
+            app/target/surefire-reports/*.xml
+            app/target/failsafe-reports/TEST-*.xml
 
   # ═════════════════════════════════════════════════════════════════════════
   # JOB 2: Code Quality (SonarQube, Checkstyle, SpotBugs)
@@ -141,11 +156,19 @@ jobs:
       # ── SonarQube Analysis ────────────────────────────────────────────────
       # Connects to a SonarQube server (self-hosted or SonarCloud).
       # The SONAR_TOKEN secret must be configured in GitHub repo settings.
+      - name: "Check SonarQube configuration"
+        id: sonar
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: "SonarQube Analysis"
+        if: steps.sonar.outputs.enabled == 'true'
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: mvn verify sonar:sonar -B
+        run: mvn verify sonar:sonar -B -Ddependency-check.skip=true
           -Dsonar.token=$SONAR_TOKEN
           -Dsonar.host.url=$SONAR_HOST_URL
         # Skip if no Sonar token is configured (e.g. fork PRs)
@@ -158,7 +181,7 @@ jobs:
 
       # ── SpotBugs — Bug Pattern Detection ───────────────────────────────────
       - name: "SpotBugs"
-        run: mvn spotbugs:check -B
+        run: mvn test-compile spotbugs:check -B
         continue-on-error: true
 
   # ═════════════════════════════════════════════════════════════════════════
@@ -191,6 +214,9 @@ jobs:
       # The NVD database is large (~500MB); the first run downloads it.
       # A cache (dependency-check-data) is used to avoid re-downloading on each run.
       - name: "OWASP Dependency Check"
+        timeout-minutes: 30
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: mvn org.owasp:dependency-check-maven:check -B
           -DfailBuildOnCVSS=7
           -Dformats=HTML,JSON
@@ -235,7 +261,7 @@ jobs:
     name: "🐳 Docker Build & Push"
     runs-on: ubuntu-latest
     needs: [build-and-test, code-quality, security-scan]  # All quality gates must pass
-    if: github.event_name == 'push'  # Only on push (not PRs)
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
 
     steps:
       - name: "Checkout code"
@@ -265,7 +291,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch         # e.g., main, develop
-            type=sha,prefix=sha-         # e.g., sha-abc1234
+            type=sha,prefix=sha-,format=long         # e.g., sha-abc1234
             type=raw,value=latest,enable={{is_default_branch}}
 
       # ── Build & Push ───────────────────────────────────────────────────────
@@ -308,7 +334,7 @@ jobs:
       - name: "Trivy Image Scan"
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:latest
+          image-ref: ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
           format: 'table'
           exit-code: '1'  # FAIL if HIGH/CRITICAL vulnerabilities found
           severity: 'HIGH,CRITICAL'
@@ -339,6 +365,15 @@ jobs:
 
       # ── Deploy to Kubernetes ──────────────────────────────────────────────
       # Apply all K8s manifests, then restart the deployment to pull the new image.
+      - name: "Create database secret"
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          test -n "$DB_PASSWORD" || { echo "Configure the DB_PASSWORD secret before deployment"; exit 1; }
+          kubectl apply -f kubernetes/00-namespace.yaml
+          kubectl create secret generic secure-delivery-pipeline-secrets --namespace secure-delivery-pipeline \
+            --from-literal=DB_PASSWORD="$DB_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+
       - name: "Deploy to K8s"
         run: |
           kubectl apply -f kubernetes/ -n secure-delivery-pipeline --validate=false

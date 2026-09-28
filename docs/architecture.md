@@ -36,7 +36,7 @@ The Secure Delivery Pipeline project follows a layered architecture with clear s
 2. **Controller** (`TaskController`) receives the request, validates input with `@Valid`
 3. **Service** (`TaskService`) applies business logic, manages transactions
 4. **Repository** (`TaskRepository`) interacts with PostgreSQL via JPA/Hibernate
-5. **Response** is serialized to JSON and returned as `TaskResponseDTO`
+5. **Response** is serialized to JSON and returned as `TaskResponseDto`
 
 ## Exception Handling
 
